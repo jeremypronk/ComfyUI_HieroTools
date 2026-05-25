@@ -101,8 +101,8 @@ Logic Flow:
                 "padding_mode": (["edge", "black", "white"], {
                     "tooltip": "'edge': Stretches outermost row of pixels to fill the void.\n'black': Fills the void with solid black pixels (0.0).\n'white': Fills the void with solid white pixels (1.0)."
                 }),
-                "interpolation": (["lanczos", "bilinear", "bicubic", "area", "nearest", "nearest-exact"], {
-                    "tooltip": "lanczos/bicubic/bilinear: Standard photos and general scaling.\narea: Best for downscaling massive images.\nnearest: Preserves hard edges (pixel art/masks)."
+                "interpolation": (["bilinear", "bicubic", "area", "nearest", "nearest-exact"], {
+                    "tooltip": "bicubic/bilinear: Standard photos and general scaling.\narea: Best for downscaling massive images.\nnearest: Preserves hard edges (pixel art/masks)."
                 }),
             },
             "optional": {
@@ -166,8 +166,8 @@ Logic Flow:
         # Permute back to ComfyUI's expected format [Batch, Height, Width, Channels]
         img_out = img_final.permute(0, 2, 3, 1)
 
-        # Clamp values to valid range [0.0, 1.0] to fix lanczos/bicubic overshooting artifacts
-        if interpolation in ["bicubic", "lanczos"]:
+        # Clamp values to valid range [0.0, 1.0] to fix bicubic overshooting artifacts
+        if interpolation == "bicubic":
             img_out = torch.clamp(img_out, 0.0, 1.0)
 
         # --- 2. PROCESS MASK ---
