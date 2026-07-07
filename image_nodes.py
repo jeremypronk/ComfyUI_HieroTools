@@ -5,6 +5,8 @@ import comfy.utils
 
 import math
 
+import numpy as np
+
 class DepthWranglerNode:
     """
     """
@@ -128,14 +130,17 @@ Logic Flow:
         # Permute the tensor to [Batch, Channels, Height, Width] for PyTorch/Comfy functions
         img_t = image.permute(0, 3, 1, 2)
 
-        # Scale the image using ComfyUI's internal upscale utility
-        img_resized = comfy.utils.common_upscale(
-            img_t,
-            target_width,
-            new_height,
-            interpolation,
-            "disabled"
-        )
+        # Only run the upscale function if the width is actually changing
+        if W != target_width:
+            img_resized = comfy.utils.common_upscale(
+                img_t,
+                target_width,
+                new_height,
+                interpolation,
+                "disabled"
+            )
+        else:
+            img_resized = img_t
 
         # Conditional logic: crop or pad the height
         if new_height > target_height:
@@ -167,7 +172,8 @@ Logic Flow:
         img_out = img_final.permute(0, 2, 3, 1)
 
         # Clamp values to valid range [0.0, 1.0] to fix bicubic overshooting artifacts
-        if interpolation == "bicubic":
+        # Only needed if we actually interpolated
+        if W != target_width and interpolation == "bicubic":
             img_out = torch.clamp(img_out, 0.0, 1.0)
 
         # --- 2. PROCESS MASK ---
@@ -179,14 +185,17 @@ Logic Flow:
             # Add a dummy channel dimension: [Batch, 1, Height, Width]
             mask_t = mask.unsqueeze(1)
 
-            # Scale mask
-            mask_resized = comfy.utils.common_upscale(
-                mask_t,
-                target_width,
-                mask_new_height,
-                interpolation,
-                "disabled"
-            )
+            # Only run the upscale function if the mask width is actually changing
+            if W_m != target_width:
+                mask_resized = comfy.utils.common_upscale(
+                    mask_t,
+                    target_width,
+                    mask_new_height,
+                    interpolation,
+                    "disabled"
+                )
+            else:
+                mask_resized = mask_t
 
             # Crop or pad mask
             if mask_new_height > target_height:
@@ -212,10 +221,99 @@ Logic Flow:
             mask_out = mask_final.squeeze(1)
 
             # Masks must strictly remain between 0.0 and 1.0, regardless of interpolation mode
-            mask_out = torch.clamp(mask_out, 0.0, 1.0)
+            if W_m != target_width:
+                mask_out = torch.clamp(mask_out, 0.0, 1.0)
 
         else:
             # If no mask is connected, output a dummy black mask matching the new dimensions
             mask_out = torch.zeros((B, target_height, target_width), dtype=torch.float32, device=image.device)
 
         return (img_out, mask_out)
+
+
+class NumpyToImage:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "numpy_array": ("*", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "convert"
+    CATEGORY = "HieroTools"
+
+    def convert(self, numpy_array):
+        if not isinstance(numpy_array, np.ndarray):
+            raise TypeError(f"Expected numpy.ndarray, got {type(numpy_array)}")
+
+        tensor = torch.from_numpy(numpy_array).float()
+
+        # 1. Check for single-channel data and throw an explicit message
+        if len(tensor.shape) == 2:  # [H, W]
+            raise ValueError(
+                "NumpyToImage: Single-channel (grayscale) data detected. Please use the 'NumpyToMask' node instead.")
+
+        if len(tensor.shape) == 3:
+            if tensor.shape[-1] == 1:  # [H, W, 1]
+                raise ValueError(
+                    "NumpyToImage: Single-channel (grayscale) data detected. Please use the 'NumpyToMask' node instead.")
+            tensor = tensor.unsqueeze(0)  # [1, H, W, C]
+
+        if len(tensor.shape) == 4 and tensor.shape[-1] == 1:  # [B, H, W, 1]
+            raise ValueError(
+                "NumpyToImage: Single-channel (grayscale) data detected. Please use the 'NumpyToMask' node instead.")
+
+        # 2. Handle multi-channel conversions (e.g., STMAP 2-channel padding)
+        channels = tensor.shape[-1]
+        if channels == 2:
+            blank_channel = torch.zeros_like(tensor[..., :1])
+            tensor = torch.cat([tensor, blank_channel], dim=-1)
+
+        return (tensor,)
+
+
+class NumpyToMask:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "numpy_array": ("*", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "convert"
+    CATEGORY = "HieroTools"
+
+    def convert(self, numpy_array):
+        if not isinstance(numpy_array, np.ndarray):
+            raise TypeError(f"Expected numpy.ndarray, got {type(numpy_array)}")
+
+        tensor = torch.from_numpy(numpy_array).float()
+
+        # ComfyUI MASK format expects 3D layout: [Batch, Height, Width]
+        if len(tensor.shape) == 2:  # [H, W] -> [1, H, W]
+            tensor = tensor.unsqueeze(0)
+
+        elif len(tensor.shape) == 3:
+            if tensor.shape[-1] == 1:  # [H, W, 1] -> [1, H, W]
+                tensor = tensor.squeeze(-1).unsqueeze(0)
+            elif tensor.shape[-1] in [3, 4]:  # [H, W, C] multi-channel image
+                raise ValueError(
+                    "NumpyToMask: Multi-channel image detected. Please use the 'NumpyToImage' node instead.")
+            else:
+                # Array is already likely formatted as [B, H, W]
+                pass
+
+        elif len(tensor.shape) == 4:
+            if tensor.shape[-1] == 1:  # [B, H, W, 1] -> [B, H, W]
+                tensor = tensor.squeeze(-1)
+            else:
+                raise ValueError(
+                    "NumpyToMask: Multi-channel image detected. Please use the 'NumpyToImage' node instead.")
+        else:
+            raise ValueError(f"NumpyToMask: Unsupported array dimensions: {tensor.shape}")
+
+        return (tensor,)
