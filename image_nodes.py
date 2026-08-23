@@ -68,6 +68,43 @@ class DepthWranglerNode:
 
         return (depth_output,)
 
+class DepthNormaliseNode:
+    DESCRIPTION = """Normalises an IMAGE batch into 0-1 range using a single global min and max computed across all images, height, width, and channels — rather than per-image or per-channel normalisation."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "depth_image": ("IMAGE",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("output_depth_image",)
+    FUNCTION = "depth_normalise"
+    CATEGORY = "HieroTools"
+
+    def depth_normalise(self, depth_image: torch.Tensor):
+        # image shape: [B, H, W, C]
+        global_min = depth_image.min()
+        global_max = depth_image.max()
+
+        print(f"[DepthNormalise] Input depth range: [{global_min:.6f}, {global_max:.6f}]")
+
+        denom = global_max - global_min
+
+        # Avoid divide-by-zero if the whole batch is a constant value
+        if denom.item() == 0:
+            normalised = torch.zeros_like(depth_image)
+        else:
+            scale = 1.0 / denom
+            normalised = scale * (depth_image - global_min)
+
+        print(f"[DepthNormalise] Output depth range: [{normalised.min():.6f}, {normalised.max():.6f}]")
+
+        normalised = normalised.clamp(0.0, 1.0)
+
+        return (normalised,)
 
 
 class ResizeToWidth:
