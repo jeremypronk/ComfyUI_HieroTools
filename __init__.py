@@ -6,7 +6,9 @@ from .image_nodes import ResizeToWidth
 from .image_nodes import NumpyToImage
 from .image_nodes import NumpyToMask
 # from .helper_nodes import DevReloaderNode
+from .wedging_nodes import ParameterWedgingLatent, ParameterWedgingGridLatent
 
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
 NODE_CLASS_MAPPINGS = {
     "PathAndFilenameNode": PathAndFilenameNode,
     "DepthWranglerNode": DepthWranglerNode,
@@ -15,6 +17,8 @@ NODE_CLASS_MAPPINGS = {
     "NumpyToImage": NumpyToImage,
     "NumpyToMask": NumpyToMask,
     # "DevReloaderNode": DevReloaderNode,
+    "ParameterWedgingLatent": ParameterWedgingLatent,
+    "ParameterWedgingGridLatent": ParameterWedgingGridLatent
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -25,6 +29,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "NumpyToImage": "Numpy to Image",
     "NumpyToMask": "Numpy to Mask",
     # "DevReloaderNode": "Dev Reloader",
+    "ParameterWedgingLatent": "Parameter Wedge (1D Linear)",
+    "ParameterWedgingGridLatent": "Parameter Wedge (2D Grid)"
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
