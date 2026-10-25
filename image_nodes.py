@@ -7,6 +7,10 @@ import math
 
 import numpy as np
 
+from PIL import Image, ImageDraw, ImageFont, ImageColor
+
+
+
 class DepthWranglerNode:
     """
     """
@@ -43,7 +47,7 @@ class DepthWranglerNode:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("output_depth_image",)
     FUNCTION = "depth_wrangle"
-    CATEGORY = "HieroTools"
+    CATEGORY = "HieroTools/image"
 
     def __init__(self, ):
         pass
@@ -82,7 +86,7 @@ class DepthNormaliseNode:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("output_depth_image",)
     FUNCTION = "depth_normalise"
-    CATEGORY = "HieroTools"
+    CATEGORY = "HieroTools/image"
 
     def depth_normalise(self, depth_image: torch.Tensor):
         # image shape: [B, H, W, C]
@@ -154,7 +158,7 @@ Logic Flow:
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("image", "mask")
     FUNCTION = "resize_image"
-    CATEGORY = "HieroTools"
+    CATEGORY = "HieroTools/image"
 
     def resize_image(self, image, target_width, target_height, padding_mode, interpolation, mask=None):
         # --- 1. PROCESS IMAGE ---
@@ -279,7 +283,7 @@ class NumpyToImage:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "convert"
-    CATEGORY = "HieroTools"
+    CATEGORY = "HieroTools/image"
 
     def convert(self, numpy_array):
         if not isinstance(numpy_array, np.ndarray):
@@ -322,7 +326,7 @@ class NumpyToMask:
 
     RETURN_TYPES = ("MASK",)
     FUNCTION = "convert"
-    CATEGORY = "HieroTools"
+    CATEGORY = "HieroTools/image"
 
     def convert(self, numpy_array):
         if not isinstance(numpy_array, np.ndarray):
@@ -354,3 +358,85 @@ class NumpyToMask:
             raise ValueError(f"NumpyToMask: Unsupported array dimensions: {tensor.shape}")
 
         return (tensor,)
+
+
+class ImageTextOverlay:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "text": ("STRING", {"forceInput": True}),
+                "position": (["top_left", "top_center", "top_right",
+                              "bottom_left", "bottom_center", "bottom_right"],
+                             {"default": "top_left"}),
+                "font_size": ("INT", {"default": -1, "min": -1, "max": 512, "step": 1}),  # -1 = auto
+                "text_color": ("STRING", {"default": "#CCCCCC", "multiline": False}),
+                "bg_color": ("STRING", {"default": "#000000", "multiline": False}),
+                "bg_opacity": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "margin": ("INT", {"default": 12, "min": 0, "max": 512, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "image_text_overlay"
+    CATEGORY = "HieroTools/image"
+
+    @staticmethod
+    def _load_font(size):
+        for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf", "arial.ttf", "Arial.ttf"):
+            try:
+                return ImageFont.truetype(name, size)
+            except OSError:
+                continue
+        try:
+            return ImageFont.load_default(size=size)  # Pillow >= 10.1
+        except TypeError:
+            return ImageFont.load_default()
+
+    @staticmethod
+    def _color(value, fallback):
+        try:
+            return ImageColor.getrgb(str(value).strip())
+        except ValueError:
+            return fallback
+
+    def image_text_overlay(self, images, text, position, font_size, text_color,
+                bg_color, bg_opacity, margin):
+        fg = self._color(text_color, (255, 255, 255))
+        bg = self._color(bg_color, (0, 0, 0))
+
+        out = []
+        for frame in images:  # usually a batch of 1 per call
+            arr = (frame.cpu().numpy()[..., :3] * 255.0).clip(0, 255).astype(np.uint8)
+            img = Image.fromarray(arr).convert("RGBA")
+            w, h = img.size
+
+            size = font_size if font_size > 0 else max(14, h // 20)
+            font = self._load_font(size)
+
+            layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(layer)
+
+            l, t, r, b = draw.textbbox((0, 0), text, font=font)
+            tw, th = r - l, b - t
+            pad = max(4, size // 4)
+
+            if position.endswith("left"):
+                x = margin
+            elif position.endswith("right"):
+                x = w - margin - tw - 2 * pad
+            else:
+                x = (w - tw - 2 * pad) // 2
+            y = margin if position.startswith("top") else h - margin - th - 2 * pad
+
+            if bg_opacity > 0:
+                draw.rectangle([x, y, x + tw + 2 * pad, y + th + 2 * pad],
+                               fill=bg + (int(255 * bg_opacity),))
+            draw.text((x + pad - l, y + pad - t), text, font=font, fill=fg + (255,))
+
+            result = Image.alpha_composite(img, layer).convert("RGB")
+            out.append(torch.from_numpy(np.array(result).astype(np.float32) / 255.0))
+
+        return (torch.stack(out, dim=0),)
