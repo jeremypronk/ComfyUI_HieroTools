@@ -6,6 +6,7 @@ from .image_nodes import ResizeToWidth
 from .image_nodes import NumpyToImage
 from .image_nodes import NumpyToMask
 from .image_nodes import ImageTextOverlay
+from .image_nodes import AspectRatioCrop
 # from .helper_nodes import DevReloaderNode
 from .wedging_nodes import ParameterWedgingLatent, ParameterWedgingGridLatent
 
@@ -20,7 +21,8 @@ NODE_CLASS_MAPPINGS = {
     "ImageTextOverlay": ImageTextOverlay,
     # "DevReloaderNode": DevReloaderNode,
     "ParameterWedgingLatent": ParameterWedgingLatent,
-    "ParameterWedgingGridLatent": ParameterWedgingGridLatent
+    "ParameterWedgingGridLatent": ParameterWedgingGridLatent,
+    "AspectRatioCrop": AspectRatioCrop,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -33,7 +35,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ImageTextOverlay": "Image Text Overlay",
     # "DevReloaderNode": "Dev Reloader",
     "ParameterWedgingLatent": "Parameter Wedge (1D Linear)",
-    "ParameterWedgingGridLatent": "Parameter Wedge (2D Grid)"
+    "ParameterWedgingGridLatent": "Parameter Wedge (2D Grid)",
+    "AspectRatioCrop": "Aspect Ratio Crop",
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']

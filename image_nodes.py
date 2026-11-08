@@ -440,3 +440,69 @@ class ImageTextOverlay:
             out.append(torch.from_numpy(np.array(result).astype(np.float32) / 255.0))
 
         return (torch.stack(out, dim=0),)
+
+
+class AspectRatioCrop:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "aspect_ratio": ([
+                                    # just real formats for now
+                                     "4:3",
+                                     "16:9",
+                                     "1.85:1", "2.35:1", "2.39:1"
+                                 ],),
+                "crop_position": (["center", "top/left", "bottom/right"], {"default": "center"}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("IMAGE",)
+    FUNCTION = "crop_to_aspect"
+    CATEGORY = "HieroTools/image"
+
+    def crop_to_aspect(self, image, aspect_ratio, crop_position):
+        # Parse the target aspect ratio
+        w_part, h_part = aspect_ratio.split(':')
+        target_ratio = float(w_part) / float(h_part)
+
+        # Get current dimensions (B, H, W, C)
+        batch_size, h, w, channels = image.shape
+        current_ratio = w / h
+
+        # If the ratio is already correct (within a tiny margin), return as is
+        if abs(current_ratio - target_ratio) < 0.01:
+            return (image,)
+
+        if current_ratio > target_ratio:
+            # Image is too wide: crop the width
+            new_w = int(h * target_ratio)
+            new_h = h
+            offset_y = 0
+
+            if crop_position == "center":
+                offset_x = (w - new_w) // 2
+            elif crop_position == "top/left":
+                offset_x = 0
+            else:  # bottom/right
+                offset_x = w - new_w
+
+        else:
+            # Image is too tall: crop the height
+            new_w = w
+            new_h = int(w / target_ratio)
+            offset_x = 0
+
+            if crop_position == "center":
+                offset_y = (h - new_h) // 2
+            elif crop_position == "top/left":
+                offset_y = 0
+            else:  # bottom/right
+                offset_y = h - new_h
+
+        # Perform the crop using tensor slicing
+        cropped_image = image[:, offset_y:offset_y + new_h, offset_x:offset_x + new_w, :]
+
+        return (cropped_image,)
